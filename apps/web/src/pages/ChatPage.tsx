@@ -130,7 +130,7 @@ export function ChatPage() {
             rows={1}
             maxLength={2000}
             aria-label="Mensagem"
-            placeholder="Digite sua pergunta… (Enter envia, Shift+Enter quebra linha)"
+            placeholder="Digite sua pergunta…"
             className="max-h-32 min-h-10 flex-1 resize-none rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
           <button type="submit" disabled={!text.trim() || sending} aria-label="Enviar" className="flex size-10 items-center justify-center rounded-lg bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
@@ -138,6 +138,7 @@ export function ChatPage() {
           </button>
         </form>
       </div>
+      <p className="mt-2 hidden text-center text-xs text-slate-400 sm:block">Enter envia · Shift+Enter quebra linha</p>
     </div>
   );
 }

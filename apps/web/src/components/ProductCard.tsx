@@ -16,13 +16,11 @@ export function ProductCard({ product, canManage, onEdit, onDelete }: Props) {
 
   return (
     <article className="flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md">
-      <div className="aspect-[3/2] bg-slate-100">
-        {product.imageUrl && !imageFailed ? (
-          <img src={product.imageUrl} alt={product.name} loading="lazy" onError={() => setImageFailed(true)} className="size-full object-cover" />
-        ) : (
-          <div className="flex size-full items-center justify-center text-slate-300">
-            <ImageOff className="size-8" aria-label="Sem imagem" />
-          </div>
+      {/* O placeholder fica sempre ao fundo: aparece enquanto a imagem carrega, se ela falhar ou se o host não responder. */}
+      <div className="relative flex aspect-[3/2] items-center justify-center bg-slate-100 text-slate-300">
+        <ImageOff className="size-8" aria-hidden />
+        {product.imageUrl && !imageFailed && (
+          <img src={product.imageUrl} alt={product.name} loading="lazy" onError={() => setImageFailed(true)} className="absolute inset-0 size-full object-cover" />
         )}
       </div>
       <div className="flex flex-1 flex-col gap-2 p-4">
