@@ -21,19 +21,20 @@ Empresas se cadastram, gerenciam seus produtos e consultam o catálogo conversan
 ├── docker-compose.yml        # MongoDB
 ├── .env.example              # variáveis da API
 └── apps
-    ├── api/src
-    │   ├── config/env.ts     # validação das variáveis de ambiente (Zod)
-    │   ├── middleware/       # authorize (role), validate (Zod), errorHandler
-    │   ├── shared/           # AppError, TenantContext
-    │   ├── modules/
-    │   │   ├── auth/         # registro, login, middleware authenticate
-    │   │   ├── companies/    # model + repository
-    │   │   ├── users/        # model + repository
-    │   │   ├── products/     # model, schemas, repository, service, routes
-    │   │   └── chat/         # rotas, loop de tool calling, definição/execução da tool
-    │   ├── seed/             # seed idempotente
-    │   ├── app.ts / server.ts
-    │   └── tests/            # testes de integração
+    ├── api
+    │   ├── src
+    │   │   ├── config/env.ts     # validação das variáveis de ambiente (Zod)
+    │   │   ├── middleware/       # authorize (role), validate (Zod), errorHandler
+    │   │   ├── shared/           # AppError, TenantContext
+    │   │   ├── modules/
+    │   │   │   ├── auth/         # registro, login, middleware authenticate
+    │   │   │   ├── companies/    # model + repository
+    │   │   │   ├── users/        # model + repository
+    │   │   │   ├── products/     # model, schemas, repository, service, routes
+    │   │   │   └── chat/         # rotas, loop de tool calling, definição/execução da tool
+    │   │   ├── seed/             # seed idempotente
+    │   │   └── app.ts / server.ts
+    │   └── tests/                # testes de integração (Vitest + Supertest)
     └── web/src
         ├── pages/            # Login, Register, Products, Chat
         ├── components/       # Layout, ProductCard, ProductForm, ui
