@@ -68,7 +68,6 @@ export function createChatService(llm: LlmClient | null, model: string) {
             messages,
             tools: [searchProductsTool],
             tool_choice: "auto",
-            temperature: 0.2,
           });
         } catch (err) {
           throw toProviderError(err);

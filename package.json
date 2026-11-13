@@ -4,7 +4,7 @@
   "packageManager": "pnpm@11.18.0",
   "engines": { "node": ">=20.19" },
   "scripts": {
-    "dev": "pnpm -r --parallel --filter ./apps/* dev",
+    "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm --filter api test",
