@@ -8,6 +8,7 @@ import {
   createProductSchema,
   productFilterSchema,
   productIdParamsSchema,
+  type ProductFilters,
   updateProductSchema,
 } from "./product.schemas.js";
 import { productService } from "./product.service.js";
@@ -20,7 +21,7 @@ export function productRoutes(env: Env): Router {
 
   // Leitura: admin e user, sempre restrita à empresa do usuário autenticado.
   router.get("/", validate("query", productFilterSchema), async (req, res) => {
-    res.json({ items: await productService.list(getTenant(req), req.query as never) });
+    res.json({ items: await productService.list(getTenant(req), req.query as unknown as ProductFilters) });
   });
 
   router.get("/categories", async (req, res) => {
