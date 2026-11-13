@@ -12,8 +12,9 @@ export const testEnv = loadEnv({
   NODE_ENV: "test",
   JWT_SECRET: "test-secret-test-secret-test-secret-123",
   JWT_EXPIRES_IN: "1h",
-  OPENAI_API_KEY: "sk-test-not-used",
-  OPENAI_MODEL: "test-model",
+  LLM_PROVIDER: "groq",
+  GROQ_API_KEY: "gsk-test-not-used",
+  GROQ_MODEL: "test-model",
 });
 
 export const makeApp = (llm?: LlmClient | null): Express =>

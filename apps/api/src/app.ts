@@ -19,8 +19,8 @@ export function createApp(env: Env, deps: { llm?: LlmClient | null } = {}): Expr
   });
   app.use("/auth", authRoutes(env));
   app.use("/products", productRoutes(env));
-  // `llm` ausente => cliente OpenAI real (ou null sem OPENAI_API_KEY => erro de configuração).
-  app.use("/chat", "llm" in deps ? chatRoutes(env, deps.llm) : chatRoutes(env));
+  // `llm` ausente => cliente real do LLM_PROVIDER (ou null sem chave => erro de configuração).
+  app.use("/chat", chatRoutes(env, deps.llm));
 
   app.use(notFoundHandler);
   app.use(errorHandler);

@@ -1,6 +1,6 @@
 # Catálogo IA — mini SaaS multi-tenant com agente de IA
 
-Empresas se cadastram, gerenciam seus produtos e consultam o catálogo conversando com um agente de IA. O agente usa **tool calling real** (OpenAI) para consultar o MongoDB, sempre restrito à empresa do usuário autenticado.
+Empresas se cadastram, gerenciam seus produtos e consultam o catálogo conversando com um agente de IA. O agente usa **tool calling real** (Groq por padrão, gratuito; OpenAI opcional) para consultar o MongoDB, sempre restrito à empresa do usuário autenticado.
 
 > Teste técnico, não um produto comercial: o foco é arquitetura backend, isolamento multi-tenant, autorização e tool calling.
 
@@ -8,7 +8,7 @@ Empresas se cadastram, gerenciam seus produtos e consultam o catálogo conversan
 
 | Camada | Tecnologias |
 | --- | --- |
-| API | Node.js, Express 5, TypeScript, Mongoose, Zod, JWT (`jsonwebtoken`), `bcryptjs`, SDK oficial `openai` |
+| API | Node.js, Express 5, TypeScript, Mongoose, Zod, JWT (`jsonwebtoken`), `bcryptjs`, SDK oficial `openai` (também usado para a Groq, via endpoint compatível) |
 | Web | React 19, TypeScript, Vite, Tailwind CSS 4, Lucide, TanStack Query, React Router |
 | Dados | MongoDB 7 (Docker Compose) |
 | Testes | Vitest + Supertest, com **MongoDB real** |
@@ -46,7 +46,7 @@ Pré-requisitos: Node ≥ 20.19, pnpm, Docker.
 
 ```bash
 pnpm install
-cp .env.example apps/api/.env      # opcional: preencha OPENAI_API_KEY
+cp .env.example apps/api/.env      # preencha GROQ_API_KEY para usar o chat
 pnpm db:up                         # sobe o MongoDB e aguarda ficar saudável
 pnpm seed                          # popula as 2 empresas de demonstração
 pnpm dev                           # API em :4000 e Web em :5173
@@ -62,10 +62,22 @@ Abra <http://localhost:5173>.
 | `JWT_SECRET` | — (obrigatória, ≥ 32 chars) | Segredo de assinatura dos tokens |
 | `JWT_EXPIRES_IN` | `1h` | Expiração do JWT |
 | `CORS_ORIGIN` | `http://localhost:5173` | Origens permitidas (separadas por vírgula) |
-| `OPENAI_API_KEY` | — | Necessária apenas para `POST /chat` |
-| `OPENAI_MODEL` | `gpt-4o-mini` | Modelo usado pelo agente (precisa suportar tool calling) |
+| `LLM_PROVIDER` | `groq` | Provedor do agente: `groq` ou `openai` |
+| `GROQ_API_KEY` | — | Chave da Groq (gratuita em <https://console.groq.com/keys>) |
+| `GROQ_MODEL` | `openai/gpt-oss-120b` | Modelo Groq (precisa suportar tool calling) |
+| `OPENAI_API_KEY` | — | Chave da OpenAI (só com `LLM_PROVIDER=openai`) |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Modelo OpenAI (precisa suportar tool calling) |
 
-Sem `OPENAI_API_KEY` a API sobe normalmente e `POST /chat` responde `503 AI_NOT_CONFIGURED` com mensagem clara. Nada é simulado.
+As chaves só são exigidas por `POST /chat`. Sem a chave do provedor selecionado, a API sobe normalmente e `POST /chat` responde `503 AI_NOT_CONFIGURED`, indicando a variável faltante. Nada é simulado.
+
+### Provedor de LLM: Groq (padrão) ou OpenAI
+
+A Groq oferece plano gratuito e uma API compatível com a Chat Completions da OpenAI (`https://api.groq.com/openai/v1`). Por isso a troca é só de configuração: o mesmo SDK `openai` é instanciado com `baseURL`, chave e modelo do provedor escolhido (`resolveLlmConfig` em `chat.service.ts`). O loop de tool calling, a tool e o escopo multi-tenant são idênticos nos dois provedores.
+
+- **Modelo padrão `openai/gpt-oss-120b`**: modelo de produção da Groq com suporte a tool use. Os modelos `llama-3.x` constam como depreciados na documentação da Groq. `openai/gpt-oss-20b` é uma alternativa mais rápida (`GROQ_MODEL`).
+- **Compatibilidade**: ao devolver a mensagem do assistente com `tool_calls`, o servidor reenvia só `role`, `content` e `tool_calls`. A Groq rejeita campos fora do padrão, e os modelos gpt-oss incluem um campo `reasoning` na resposta. Também não usamos `tool_choice: "none"`: com gpt-oss na Groq o modelo ainda tenta chamar a tool e a API responde `400 tool_use_failed`. Na rodada final, as tools simplesmente não são enviadas.
+- **Plano gratuito**: há limites por minuto e por dia, definidos pela Groq por organização. Na validação, `openai/gpt-oss-120b` retornou limite de **8.000 tokens/minuto**; cada pergunta usa de ~1,5k a ~3k tokens (de 1 a 4 chamadas ao modelo). Rajadas de várias perguntas seguidas podem atingi-lo, e o chat então responde `503 AI_RATE_LIMITED` (a UI mostra a mensagem). Basta aguardar alguns segundos.
+- Para usar a OpenAI: `LLM_PROVIDER=openai` e `OPENAI_API_KEY`.
 
 ### Usuários de demonstração (senha de todos: `Senha@123`)
 
@@ -117,7 +129,7 @@ Fluxo implementado em `chat.service.ts`:
 1. Recebe a mensagem autenticada e monta `system + histórico + user`.
 2. Envia ao LLM junto com a definição da tool `search_products`.
 3. Se o modelo responder com `tool_calls`, o servidor **executa a consulta real** no MongoDB.
-4. Devolve o resultado como mensagem `tool` e chama o LLM novamente (até 4 rodadas, para barrar loops).
+4. Devolve o resultado como mensagem `tool` e chama o LLM novamente. São no máximo 4 rodadas; na última, as tools não são oferecidas e o modelo precisa responder com o que já consultou (evita falhas quando ele insiste em novas buscas, por exemplo sem resultados).
 5. Retorna `{ reply, toolCalls }`; `toolCalls` lista as buscas feitas (a UI as exibe como prova de que o dado veio do banco).
 
 Tool `search_products`: `search`, `category`, `minPrice`, `maxPrice`, `sort` (`newest | name_asc | price_asc | price_desc`), `limit` (≤ 20). Os argumentos passam por Zod antes da consulta; se forem inválidos, o erro é devolvido **ao modelo** para que ele corrija a chamada.
@@ -136,12 +148,12 @@ Falhas do provedor são mapeadas: chave inválida → `502 AI_PROVIDER_AUTH`, ra
 
 ## Testes
 
-37 testes de integração com MongoDB real; apenas o provedor de LLM é substituído por um fake roteirizado (que também grava as chamadas, permitindo inspecionar o que o servidor enviou ao "modelo").
+40 testes de integração com MongoDB real; apenas o provedor de LLM é substituído por um fake roteirizado (que também grava as chamadas, permitindo inspecionar o que o servidor enviou ao "modelo").
 
 | Arquivo | Comprova |
 | --- | --- |
 | `products.test.ts` | Listagem isolada; GET/PATCH/DELETE de produto alheio → 404 e dado intacto; `companyId` do body ignorado; admin CRUD; user → 403 em escrita; validação; filtros; regex escapado; query não vira operador Mongo |
-| `chat.test.ts` | Tool executa no Mongo e devolve só produtos do tenant; `companyId` do modelo ignorado; A e B recebem resultados distintos para a mesma busca; múltiplas rodadas; limite de loop; args inválidos; sem API key → 503 sem simulação; erros do provedor |
+| `chat.test.ts` | Tool executa no Mongo e devolve só produtos do tenant; `companyId` do modelo ignorado; A e B recebem resultados distintos para a mesma busca; múltiplas rodadas; limite de loop; args inválidos; sem API key → 503 sem simulação; erros do provedor; seleção Groq/OpenAI; mensagem do assistente reenviada só com campos padrão; rodada final sem tools |
 | `auth.test.ts` | Registro/login; senha com hash; `companyId`/`role` do cliente ignorados; sem empresa órfã em e-mail duplicado; token ausente/inválido/expirado/segredo errado; usuário removido; claims forjadas |
 | `seed.test.ts` | Idempotência (2 empresas, 4 usuários, ≥ 10 produtos cada) e login com as credenciais documentadas |
 
@@ -151,7 +163,7 @@ Falhas do provedor são mapeadas: chave inválida → `502 AI_PROVIDER_AUTH`, ra
 2. Crie, edite e exclua um produto; teste os filtros.
 3. Saia e entre como `user@empresa-a.com`: só leitura, sem ações administrativas.
 4. Entre como `admin@empresa-b.com`: catálogo totalmente diferente.
-5. Com `OPENAI_API_KEY` configurada, no chat pergunte "Tem algum notebook?" nas duas empresas e compare as respostas.
+5. Com `GROQ_API_KEY` configurada, no chat pergunte "Tem algum notebook?" nas duas empresas e compare as respostas.
 6. Registre uma nova empresa em `/register`: catálogo vazio, você é admin apenas dela.
 
 ## Limitações conscientes do MVP
@@ -160,6 +172,7 @@ Falhas do provedor são mapeadas: chave inválida → `502 AI_PROVIDER_AUTH`, ra
 - Sem rate limit (login e chat), sem verificação de e-mail, sem recuperação de senha, sem gestão de usuários dentro da empresa (o `user` só existe via seed/banco).
 - Busca por `regex` escapado, sem índice de texto: simples e previsível, mas não escala para catálogos grandes.
 - Listagem sem paginação (limite máximo de 100 itens).
+- O plano gratuito da Groq limita tokens por minuto/dia; sem retry com fila nem cota por tenant, rajadas de perguntas recebem `AI_RATE_LIMITED`.
 - Chat sem streaming e sem persistência; o histórico vive no navegador e só os últimos 10 turnos vão ao modelo. Respostas em texto simples (sem renderizar Markdown).
 - Sem transações no registro (compensação manual).
 - Imagens dos produtos do seed vêm de `picsum.photos` (serviço externo); se ficar indisponível, o card mostra um ícone.
