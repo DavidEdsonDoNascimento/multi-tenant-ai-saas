@@ -152,6 +152,24 @@ describe("POST /chat: fluxo de tool calling", () => {
     expect(calls[3]!.messages.at(-1)).toMatchObject({ role: "system", content: expect.stringContaining("sem chamar ferramentas") });
   });
 
+  it("limita o total de consultas por pergunta, mesmo com tool_calls paralelas", async () => {
+    const parallel = Array.from({ length: 8 }, (_, i) => ({
+      id: `call_${i}`,
+      type: "function",
+      function: { name: SEARCH_PRODUCTS, arguments: JSON.stringify({ search: `termo ${i}` }) },
+    }));
+    const { llm, calls } = scriptedLlm(completion({ content: null, tool_calls: parallel }), completion({ content: "ok" }));
+    const app = makeApp(llm);
+    const { a } = await seedTwoTenants(app);
+    const res = await request(app).post("/chat").set(auth(a.user.token)).send({ message: "x" }).expect(200);
+
+    expect(res.body.toolCalls).toHaveLength(5);
+    const toolResponses = toolMessages(calls[1]!);
+    expect(toolResponses).toHaveLength(8); // toda tool_call recebe resposta
+    expect(toolResponses.filter((r) => r.error)).toHaveLength(3);
+    expect(calls[1]!.tools).toBeUndefined(); // teto atingido: próxima rodada é a final
+  });
+
   it("interrompe loops de tool calling infinitos", async () => {
     const loop = completion(toolCall({}));
     const { llm } = scriptedLlm(loop, loop, loop, loop, loop);

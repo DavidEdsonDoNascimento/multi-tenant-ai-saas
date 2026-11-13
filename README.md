@@ -129,7 +129,7 @@ Fluxo implementado em `chat.service.ts`:
 1. Recebe a mensagem autenticada e monta `system + histórico + user`.
 2. Envia ao LLM junto com a definição da tool `search_products`.
 3. Se o modelo responder com `tool_calls`, o servidor **executa a consulta real** no MongoDB.
-4. Devolve o resultado como mensagem `tool` e chama o LLM novamente. São no máximo 4 rodadas; na última, as tools não são oferecidas e o modelo precisa responder com o que já consultou (evita falhas quando ele insiste em novas buscas, por exemplo sem resultados).
+4. Devolve o resultado como mensagem `tool` e chama o LLM novamente. Limites: no máximo **4 chamadas ao modelo** e **5 consultas à tool** por pergunta (o teto vale também para `tool_calls` paralelas; as excedentes recebem erro em vez de consulta). Na última rodada, ou ao atingir o teto, as tools não são oferecidas e o modelo precisa responder com o que já consultou. Isso evita falhas quando ele insiste em novas buscas, por exemplo quando não há resultados.
 5. Retorna `{ reply, toolCalls }`; `toolCalls` lista as buscas feitas (a UI as exibe como prova de que o dado veio do banco).
 
 Tool `search_products`: `search`, `category`, `minPrice`, `maxPrice`, `sort` (`newest | name_asc | price_asc | price_desc`), `limit` (≤ 20). Os argumentos passam por Zod antes da consulta; se forem inválidos, o erro é devolvido **ao modelo** para que ele corrija a chamada.
@@ -148,12 +148,12 @@ Falhas do provedor são mapeadas: chave inválida → `502 AI_PROVIDER_AUTH`, ra
 
 ## Testes
 
-40 testes de integração com MongoDB real; apenas o provedor de LLM é substituído por um fake roteirizado (que também grava as chamadas, permitindo inspecionar o que o servidor enviou ao "modelo").
+41 testes de integração com MongoDB real; apenas o provedor de LLM é substituído por um fake roteirizado (que também grava as chamadas, permitindo inspecionar o que o servidor enviou ao "modelo").
 
 | Arquivo | Comprova |
 | --- | --- |
 | `products.test.ts` | Listagem isolada; GET/PATCH/DELETE de produto alheio → 404 e dado intacto; `companyId` do body ignorado; admin CRUD; user → 403 em escrita; validação; filtros; regex escapado; query não vira operador Mongo |
-| `chat.test.ts` | Tool executa no Mongo e devolve só produtos do tenant; `companyId` do modelo ignorado; A e B recebem resultados distintos para a mesma busca; múltiplas rodadas; limite de loop; args inválidos; sem API key → 503 sem simulação; erros do provedor; seleção Groq/OpenAI; mensagem do assistente reenviada só com campos padrão; rodada final sem tools |
+| `chat.test.ts` | Tool executa no Mongo e devolve só produtos do tenant; `companyId` do modelo ignorado; A e B recebem resultados distintos para a mesma busca; múltiplas rodadas; limite de loop; args inválidos; sem API key → 503 sem simulação; erros do provedor; seleção Groq/OpenAI; mensagem do assistente reenviada só com campos padrão; rodada final sem tools; teto de consultas com `tool_calls` paralelas |
 | `auth.test.ts` | Registro/login; senha com hash; `companyId`/`role` do cliente ignorados; sem empresa órfã em e-mail duplicado; token ausente/inválido/expirado/segredo errado; usuário removido; claims forjadas |
 | `seed.test.ts` | Idempotência (2 empresas, 4 usuários, ≥ 10 produtos cada) e login com as credenciais documentadas |
 

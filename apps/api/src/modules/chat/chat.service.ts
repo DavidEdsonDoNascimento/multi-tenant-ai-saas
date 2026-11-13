@@ -45,6 +45,8 @@ export function createLlmClient(config: LlmConfig): LlmClient | null {
 }
 
 const MAX_STEPS = 4;
+// Teto de consultas por pergunta: uma única resposta do modelo pode trazer várias tool_calls em paralelo.
+const MAX_TOOL_CALLS = 5;
 const FINAL_STEP_INSTRUCTION =
   "Limite de buscas atingido. Responda agora ao usuário usando apenas os resultados já obtidos, sem chamar ferramentas.";
 
@@ -88,7 +90,7 @@ export function createChatService(llm: LlmClient | null, config: Pick<LlmConfig,
       for (let step = 0; step < MAX_STEPS; step++) {
         let completion: ChatCompletion;
         try {
-          const isLastStep = step === MAX_STEPS - 1;
+          const isLastStep = step === MAX_STEPS - 1 || toolCalls.length >= MAX_TOOL_CALLS;
           completion = await llm.createCompletion({
             model: config.model,
             // Na última rodada não há tools: o modelo responde com o que já consultou.
@@ -113,6 +115,11 @@ export function createChatService(llm: LlmClient | null, config: Pick<LlmConfig,
         const functionCalls = message.tool_calls.filter((c) => c.type === "function");
         messages.push({ role: "assistant", content: message.content, tool_calls: functionCalls });
         for (const call of functionCalls) {
+          // Toda tool_call exige uma resposta; acima do teto ela recebe erro em vez de consulta.
+          if (toolCalls.length >= MAX_TOOL_CALLS) {
+            messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ error: "Limite de buscas por pergunta atingido" }) });
+            continue;
+          }
           // ctx vem do JWT/servidor; o modelo controla apenas nome e filtros.
           const result = await executeTool(ctx, call.function.name, call.function.arguments);
           toolCalls.push(result.summary);
